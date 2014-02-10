@@ -1,0 +1,5 @@
+beambag is an erlang library for using beam files as a quasi-static in-memory data store.
+
+The latest version of beambag is available at http://github.com/mochi/beambag
+
+For an example use case please look in the example directory.

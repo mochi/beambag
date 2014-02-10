@@ -1,0 +1,7 @@
+{application, beambag,
+ [{description, "Quasi-static memory store using beam files."},
+  {vsn, "0.1"},
+  {modules, []},
+  {registered, []},
+  {env, []},
+  {applications, [kernel]}]}.

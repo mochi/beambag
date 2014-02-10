@@ -1,0 +1,1 @@
+-define(MAGIC, {'$$magic'}).
