@@ -5,7 +5,6 @@
 %% for use as a quasi-static in memory data store.
 
 -module(beambag).
--author("Matthew Dempsky <matthew@mochimedia.com>").
 
 -include_lib("kernel/include/file.hrl").
 -include("beambag_edit_magic.hrl").
@@ -68,7 +67,6 @@ init([TargetModule, SourceFile, Template, BuildFun]) ->
         false ->
             ok
     end,
-
     {ok, TRef} = timer:send_after(timer:seconds(5), interval),
     {ok, State#beambag_state{tref = TRef}}.
 
@@ -90,6 +88,8 @@ get_max_mtime(FileNames) ->
 handle_call(last_updated, _From, State) ->
     MTime = State#beambag_state.mtime,
     {reply, MTime, State};
+handle_call(stop, _From, State) ->
+    {stop, normal, ok, State};
 handle_call(_Req, _From, State) ->
     {reply, {error, badreq}, State}.
 
