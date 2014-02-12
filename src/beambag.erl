@@ -128,6 +128,7 @@ handle_info(interval, State=#beambag_state{file=File, template=Template,
     NewState = State1#beambag_state{tref = TRef},
     {noreply, NewState};
 handle_info(_Req, State) ->
+    io:format("WAT ~p ~n",[State]),
     {noreply, State}.
 
 %% @private

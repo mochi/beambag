@@ -2,6 +2,8 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-include("beambag_edit_magic.hrl").
+
 -export([build/1, build_raw/1]).
 
 
@@ -16,47 +18,91 @@ build([MapData]) ->
 
 
 child_spec_test() ->
-    ?assertMatch([{test_mapping_edit,
+    ?assertMatch([{beambag_mapping_example_edit,
                    {beambag,start_link,
-                    [test_mapping,"./../priv/test.etf","./../ebin/test.beam",
+                    [beambag_mapping_example,
+                     "./../priv/test.txt",
+                     "./../ebin/beambag_mapping_example.beam",
                      _]},
                    permanent,5000,worker,
-                   [test_mapping_edit]},
+                   [beambag_mapping_example_edit]},
                   [beambag]],
-                  beambag:child_spec(test_mapping,
+                  beambag:child_spec(beambag_mapping_example,
                                      beambag_deps:local_path(
-                                       ["..", "priv", "test.etf"]),
+                                       ["..", "priv", "test.txt"]),
                                      beambag_deps:local_path(
-                                       ["..", "ebin", "test.beam"]),
-                                     fun build_raw/1)),
+                                       ["..", "ebin", "beambag_mapping_example.beam"]),
+                                     fun build/1)),
     ok.
 
 beambag_test_() ->
     {foreach,
      fun() ->
-             {ok, Pid} = beambag:start_link(test_mapping,
+             {ok, Pid} = beambag:start_link(beambag_mapping_example,
                                             beambag_deps:local_path(
                                               ["..", "priv", "test.etf"]),
                                             beambag_deps:local_path(
-                                              ["..", "ebin", "test.beam"]),
+                                              ["..", "ebin","beambag_mapping_example.beam"]),
                                             {raw, fun ?MODULE:build_raw/1}),
              Pid
      end,
      fun(Pid) ->
              ok = gen_server:call(Pid, stop)
      end,
-     [ fun last_updated/0,
-       fun bad_req/0
+     [ {"last_updated", fun last_updated/0},
+       {"bad request", fun bad_req/0},
+       {"testing multi edits", fun testing_edits/0}
      ]
     }.
 
 last_updated() ->
-    LastUpdated = beambag:last_updated(test_mapping),
+    LastUpdated = beambag:last_updated(beambag_mapping_example),
     ?assertMatch({{_Year, _Month, _Day}, {_H, _M, _S}}, LastUpdated),
     ok.
 
 
 bad_req() ->
-    ?assertEqual({error, badreq}, gen_server:call(test_mapping_edit, bad_request)),
+    ?assertEqual({error, badreq},
+                 gen_server:call(beambag_mapping_example_edit, bad_request)),
     ok.
 
+trigger_edit() ->
+    trigger_edit(100).
+trigger_edit(0) ->
+    ok;
+trigger_edit(N) ->
+    Now = calendar:local_time(),
+    %% Force a new mtime
+    ?cmd("touch ../priv/test.etf"),
+    ?cmd("touch ../ebin/beambag_mapping_example.beam"),
+    Pid = whereis(beambag_mapping_example_edit),
+    Pid ! interval,
+    case beambag:last_updated(beambag_mapping_example) of
+        Now ->
+            trigger_edit(N-1);
+        _ ->
+            ok
+    end.
+
+testing_edits() ->
+    Data = [{<<"testmap">>, [{<<"test">>, {'test_info', <<"test">>, 'null'}}
+                            ]}],
+    file:write_file("../priv/test.etf", term_to_binary(Data)),
+    trigger_edit(),
+    ?assertEqual({1,
+                  {<<"test">>,
+                  {test_info,<<"test">>,null},
+                  nil,nil}},
+                 beambag_mapping_example:state()),
+    Data1 = [{<<"testmap">>, [{<<"test">>, {'test_info', <<"test">>, 'null'}},
+                              {<<"edit_test">>, {'edit_info', <<"edit">>, 'null'}}
+                             ]}],
+    file:write_file("../priv/test.etf", term_to_binary(Data1)),
+    trigger_edit(),
+    ?assertEqual({2,
+                  {<<"edit_test">>,
+                   {edit_info,<<"edit">>,null},
+                   {<<"test">>,{test_info,<<"test">>,null},nil,nil},
+                   nil}},
+                 beambag_mapping_example:state()),
+    ok.
