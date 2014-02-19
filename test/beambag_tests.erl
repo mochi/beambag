@@ -28,10 +28,8 @@ child_spec_test() ->
                    [beambag_mapping_example_edit]},
                   [beambag]],
                   beambag:child_spec(beambag_mapping_example,
-                                     beambag_deps:local_path(
-                                       ["..", "priv", "test.txt"]),
-                                     beambag_deps:local_path(
-                                       ["..", "ebin", "beambag_mapping_example.beam"]),
+                                     "./../priv/test.txt",
+                                     "./../ebin/beambag_mapping_example.beam",
                                      fun build/1)),
     ok.
 
@@ -39,10 +37,8 @@ beambag_test_() ->
     {foreach,
      fun() ->
              {ok, Pid} = beambag:start_link(beambag_mapping_example,
-                                            beambag_deps:local_path(
-                                              ["..", "priv", "test.etf"]),
-                                            beambag_deps:local_path(
-                                              ["..", "ebin","beambag_mapping_example.beam"]),
+                                            "./../priv/test.etf",
+                                            "./../ebin/beambag_mapping_example.beam",
                                             {raw, fun ?MODULE:build_raw/1}),
              Pid
      end,

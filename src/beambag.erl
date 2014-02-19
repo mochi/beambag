@@ -49,7 +49,10 @@ last_updated(TargetModule) ->
     gen_server:call(EditorName, last_updated).
 
 %% @private
-init([TargetModule, SourceFile, Template, BuildFun]) ->
+init([TargetModule, SF, T, BuildFun]) ->
+    BaseDir = get_base_dir(?MODULE),
+    Template = BaseDir ++ "/" ++ T,
+    SourceFile = BaseDir ++ "/" ++ SF,
     Target = filename:join([filename:dirname(filename:dirname(Template)),
                             "edit", filename:basename(Template)]),
     ok = filelib:ensure_dir(Target),
@@ -69,6 +72,13 @@ init([TargetModule, SourceFile, Template, BuildFun]) ->
     end,
     {ok, TRef} = timer:send_after(timer:seconds(5), interval),
     {ok, State#beambag_state{tref = TRef}}.
+
+%% @private
+%% @doc Return the application directory for Module. It assumes Module is in
+%%      a standard OTP layout application in the ebin or src directory.
+get_base_dir(Module) ->
+    {file, Here} = code:is_loaded(Module),
+    filename:dirname(filename:dirname(Here)).
 
 %% @private
 get_file_mtime(FileName) ->
