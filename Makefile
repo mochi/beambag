@@ -12,7 +12,7 @@ all:
 edoc:
 	@$(REBAR) doc
 
-test:
+test: all
 	@rm -rf .eunit
 	@mkdir -p .eunit
 	@$(REBAR) skip_deps=true eunit
