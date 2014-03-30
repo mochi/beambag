@@ -1,0 +1,2 @@
+-module(beambag_state).
+
