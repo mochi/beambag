@@ -63,10 +63,11 @@ bad_req() ->
     ok.
 
 trigger_edit() ->
-    trigger_edit(100).
+    trigger_edit(1000).
 trigger_edit(0) ->
     ok;
 trigger_edit(N) ->
+    %% XXX - This test needs some work
     Now = calendar:local_time(),
     %% Force a new mtime
     ?cmd("touch ../priv/test.etf"),
