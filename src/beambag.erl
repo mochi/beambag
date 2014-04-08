@@ -64,12 +64,13 @@ init([TargetModule, SF, T, BuildFun]) ->
                    module = TargetModule,
                    buildfun = BuildFun},
 
-    case MaxMTime > get_file_mtime(Target) of
+    case need_edit(State) of
         true ->
-            ok = edit(State);
-        false ->
-            ok
+	    ok = edit(State);
+	false ->
+	    ok
     end,
+
     {ok, TRef} = timer:send_after(timer:seconds(5), interval),
     {ok, State#beambag_state{tref = TRef}}.
 
@@ -154,6 +155,18 @@ terminate(_Rsn, _State) ->
 code_change(_Vsn, State, _Extra) ->
     {ok, State}.
 
+need_edit(State) ->
+    Module = State#beambag_state.module,
+    {file, Filename} = code:is_loaded(Module),
+    case code:get_object_code(Module) of
+	{Module, Beam, Filename} ->
+	    beambag_edit:has_magic(Beam, ?MAGIC);
+	{Module, _Beam, _OtherFilename} ->
+	    code:load_file(Module),
+	    need_edit(State);
+	error ->
+	    false
+    end.
 
 edit(State) ->
     Data = getbinarydata(State#beambag_state.file, State#beambag_state.buildfun),
@@ -172,12 +185,11 @@ edit(State) ->
             ok
     end.
 
-
 getbinarydata(FileName, Builder) ->
     case getdata(FileName, Builder) of
-       error = Error ->
-           Error;
-        {binary, Data} ->
+	error = Error ->
+	    Error;
+	{binary, Data} ->
 	    Data;
 	{term, Data} ->
 	    term_to_binary(Data)
