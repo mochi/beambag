@@ -177,8 +177,10 @@ getbinarydata(FileName, Builder) ->
     case getdata(FileName, Builder) of
        error = Error ->
            Error;
-       Data ->
-           term_to_binary(Data)
+        {binary, Data} ->
+	    Data;
+	{term, Data} ->
+	    term_to_binary(Data)
     end.
 
 getdata(FileName, {binary, BuildFun}) ->
