@@ -158,10 +158,14 @@ code_change(_Vsn, State, _Extra) ->
 need_edit(State) ->
     Module = State#beambag_state.module,
     {file, Filename} = code:is_loaded(Module),
+    %% Sometimes mtime isn't enough. We want to make sure the source
+    %% data is edited into the target beam.
     case code:get_object_code(Module) of
 	{Module, Beam, Filename} ->
+            %% Check for magic.
 	    beambag_edit:has_magic(Beam, ?MAGIC);
 	{Module, _Beam, _OtherFilename} ->
+            %% Load target beam if not used.
 	    code:load_file(Module),
 	    need_edit(State);
 	error ->
