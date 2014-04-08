@@ -64,12 +64,13 @@ init([TargetModule, SF, T, BuildFun]) ->
                    module = TargetModule,
                    buildfun = BuildFun},
 
-    case MaxMTime > get_file_mtime(Target) of
+    case need_edit(State) of
         true ->
-            ok = edit(State);
-        false ->
-            ok
+	    ok = edit(State);
+	false ->
+	    ok
     end,
+
     {ok, TRef} = timer:send_after(timer:seconds(5), interval),
     {ok, State#beambag_state{tref = TRef}}.
 
@@ -154,9 +155,21 @@ terminate(_Rsn, _State) ->
 code_change(_Vsn, State, _Extra) ->
     {ok, State}.
 
+need_edit(State) ->
+    Module = State#beambag_state.module,
+    {file, Filename} = code:is_loaded(Module),
+    case code:get_object_code(Module) of
+	{Module, Beam, Filename} ->
+	    beambag_edit:has_magic(Beam, ?MAGIC);
+	{Module, _Beam, _OtherFilename} ->
+	    code:load_file(Module),
+	    need_edit(State);
+	error ->
+	    false
+    end.
 
 edit(State) ->
-    Data = getdata(State#beambag_state.file, State#beambag_state.buildfun),
+    Data = getbinarydata(State#beambag_state.file, State#beambag_state.buildfun),
     case Data of
         error ->
             error_logger:warning_msg("Data is invalid, skipping beamedit.~n"),
@@ -172,11 +185,23 @@ edit(State) ->
             ok
     end.
 
+getbinarydata(FileName, Builder) ->
+    case getdata(FileName, Builder) of
+	error = Error ->
+	    Error;
+	{binary, Data} ->
+	    Data;
+	{term, Data} ->
+	    term_to_binary(Data)
+    end.
+
+getdata(FileName, {binary, BuildFun}) ->
+    {binary, BuildFun(FileName)};
 getdata(FileName, {raw, BuildFun}) ->
-    BuildFun(FileName);
+    {term, BuildFun(FileName)};
 getdata(FileName, BuildFun) ->
     {ok, Data} = file:consult(FileName),
-    BuildFun(Data).
+    {term, BuildFun(Data)}.
 
 editor_name(TargetModule) ->
     list_to_atom(atom_to_list(TargetModule) ++ "_edit").
