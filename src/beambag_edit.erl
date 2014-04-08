@@ -17,11 +17,10 @@ sub(<<"LitT">>, Chunk, From, To) ->
     <<Size:32, Rest/bytes>> = Chunk,
     <<Count:32, LitT/bytes>> = zlib:uncompress(Rest),
     true = (4 + size(LitT) =:= Size), %% assert
-    X = term_to_binary(To),
     NewLitT =
         <<<<(case binary_to_term(Lit) =:= From of
                  true ->
-                     <<(size(X)):32, X/bytes>>;
+                     <<(size(To)):32, To/bytes>>;
                  false ->
                      <<N:32, Lit/bytes>>
              end)/bytes>> || <<N:32, Lit:N/bytes>> <= LitT>>,

@@ -156,7 +156,7 @@ code_change(_Vsn, State, _Extra) ->
 
 
 edit(State) ->
-    Data = getdata(State#beambag_state.file, State#beambag_state.buildfun),
+    Data = getbinarydata(State#beambag_state.file, State#beambag_state.buildfun),
     case Data of
         error ->
             error_logger:warning_msg("Data is invalid, skipping beamedit.~n"),
@@ -172,11 +172,22 @@ edit(State) ->
             ok
     end.
 
+
+getbinarydata(FileName, Builder) ->
+    case getdata(FileName, Builder) of
+       error = Error ->
+           Error;
+       Data ->
+           term_to_binary(Data)
+    end.
+
+getdata(FileName, {binary, BuildFun}) ->
+    {binary, BuildFun(FileName)};
 getdata(FileName, {raw, BuildFun}) ->
-    BuildFun(FileName);
+    {term, BuildFun(FileName)};
 getdata(FileName, BuildFun) ->
     {ok, Data} = file:consult(FileName),
-    BuildFun(Data).
+    {term, BuildFun(Data)}.
 
 editor_name(TargetModule) ->
     list_to_atom(atom_to_list(TargetModule) ++ "_edit").
