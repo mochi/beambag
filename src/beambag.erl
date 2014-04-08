@@ -51,8 +51,8 @@ last_updated(TargetModule) ->
 %% @private
 init([TargetModule, SF, T, BuildFun]) ->
     BaseDir = get_base_dir(?MODULE),
-    Template = BaseDir ++ "/" ++ T,
-    SourceFile = BaseDir ++ "/" ++ SF,
+    Template = full_path(T, BaseDir),
+    SourceFile = full_path(SF, BaseDir),
     Target = filename:join([filename:dirname(filename:dirname(Template)),
                             "edit", filename:basename(Template)]),
     ok = filelib:ensure_dir(Target),
@@ -72,6 +72,12 @@ init([TargetModule, SF, T, BuildFun]) ->
     end,
     {ok, TRef} = timer:send_after(timer:seconds(5), interval),
     {ok, State#beambag_state{tref = TRef}}.
+
+%% @private
+full_path("/" ++ Rest, _BaseDir) ->
+    "/" ++ Rest;
+full_path(Path, BaseDir) ->
+    BaseDir ++ "/" ++ Path.
 
 %% @private
 %% @doc Return the application directory for Module. It assumes Module is in
