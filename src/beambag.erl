@@ -175,6 +175,7 @@ does_the_module_contain_the_magic_marker(State) ->
 	    beambag_edit:has_magic(Beam, ?MAGIC);
 	{Module, _Beam, _OtherFilename} ->
 	    %% Load target beam if not used.
+	    code:purge(Module),
 	    code:load_file(Module),
 	    need_edit(State);
 	error ->
