@@ -191,7 +191,7 @@ edit(State) ->
 
 getbinarydata(FileName, Builder) ->
     case getdata(FileName, Builder) of
-	error = Error ->
+	{_, error = Error} ->
 	    Error;
 	{binary, Data} ->
 	    Data;
