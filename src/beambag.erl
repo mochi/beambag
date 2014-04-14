@@ -156,16 +156,26 @@ code_change(_Vsn, State, _Extra) ->
     {ok, State}.
 
 need_edit(State) ->
+    is_template_newer(State) orelse
+	does_the_module_contain_the_magic_marker(State).
+
+is_template_newer(State) ->
+    TemplateMTime = get_file_mtime(State#beambag_state.template),
+    TargetMTime = get_file_mtime(State#beambag_state.target),
+    TemplateMTime > TargetMTime.
+
+does_the_module_contain_the_magic_marker(State) ->
     Module = State#beambag_state.module,
     {file, Filename} = code:is_loaded(Module),
     %% Sometimes mtime isn't enough. We want to make sure the source
     %% data is edited into the target beam.
     case code:get_object_code(Module) of
 	{Module, Beam, Filename} ->
-            %% Check for magic.
+	    %% Check for magic.
 	    beambag_edit:has_magic(Beam, ?MAGIC);
 	{Module, _Beam, _OtherFilename} ->
-            %% Load target beam if not used.
+	    %% Load target beam if not used.
+	    code:purge(Module),
 	    code:load_file(Module),
 	    need_edit(State);
 	error ->
