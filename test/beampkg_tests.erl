@@ -47,7 +47,7 @@ complete_test() ->
     FN = "propadata." ++ md5str(PackageBin),
     ok = file:write_file(FN ++ ".temp", PackageBin),
     ok = file:rename(FN ++ ".temp", FN),
-    MTime = beampkg:get_file_mtime(FN),
+    MTime = beambag:get_file_mtime(FN),
     Editor ! interval,
     io:format("last_updated: ~p, mtime: ~p~n", [beampkg:last_updated(simple_template), MTime]),
     ?assertMatch(MTime, beampkg:last_updated(simple_template)),

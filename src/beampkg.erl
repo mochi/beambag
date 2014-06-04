@@ -14,7 +14,7 @@
 -export([child_spec/3, start_link/3, last_updated/1, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
--export([check_md5/1, get_last_package/2, get_file_mtime/1, error_report/1]).
+-export([check_md5/1, get_last_package/2]).
 
 -record(beampkg_state, {wildcard, current_package, mtime, target, template, module, tref}).
 
@@ -25,7 +25,7 @@
 -spec child_spec(atom(), string(), string()) ->
                         list().
 child_spec(TargetModule, PackageDir, PackageWildcard) ->
-    EditorName = editor_name(TargetModule),
+    EditorName = beambag:editor_name(TargetModule),
     [{EditorName,
      {?MODULE, start_link, [TargetModule, PackageDir, PackageWildcard]},
      permanent, 5000, worker, [EditorName]}, [beampkg]].
@@ -35,13 +35,14 @@ child_spec(TargetModule, PackageDir, PackageWildcard) ->
 -spec start_link(atom(), string(), string()) ->
                         pid().
 start_link(TargetModule, PackageDir, PackageWildcard) ->
-    gen_server:start_link({local, editor_name(TargetModule)},
+    gen_server:start_link({local, beambag:editor_name(TargetModule)},
                           ?MODULE,
                           [TargetModule, PackageDir, PackageWildcard], []).
 
+%% @doc Stop the <code>beampkg</code> server.
+-spec stop(atom()) -> ok.
 stop(TargetModule) ->
-    EditorName = editor_name(TargetModule),
-    gen_server:call(EditorName, stop).
+    beambag:stop(TargetModule).
 
 %%
 %% @doc Get the date and time when the <code>TargetModule</code> was
@@ -49,19 +50,18 @@ stop(TargetModule) ->
 -spec last_updated(atom()) ->
                           calendar:date_time().
 last_updated(TargetModule) ->
-    EditorName = editor_name(TargetModule),
-    gen_server:call(EditorName, last_updated).
+    beambag:last_updated(TargetModule).
 
 %% @private
 init([TargetModule, PackageDir, PackageWildcard]) ->
-    BaseDir = get_base_dir(?MODULE),
-    PackageFullDir = full_path(PackageDir, BaseDir),
+    BaseDir = beambag:get_base_dir(?MODULE),
+    PackageFullDir = beambag:full_path(PackageDir, BaseDir),
     PackageFullWildcard = filename:join([PackageFullDir, PackageWildcard]),
     Target = filename:join([BaseDir, "edited", atom_to_list(TargetModule) ++ ".beam"]),
     ok = filelib:ensure_dir(Target),
     true = code:add_patha(filename:dirname(Target)),
     {_, PackageFile} = get_last_package(PackageFullWildcard, TargetModule),
-    MaxMTime = get_max_mtime([PackageFile, Target]),
+    MaxMTime = beambag:get_max_mtime([PackageFile, Target]),
     State = #beampkg_state{wildcard = PackageFullWildcard,
                    current_package = PackageFile,
                    mtime = MaxMTime,
@@ -80,40 +80,11 @@ init([TargetModule, PackageDir, PackageWildcard]) ->
     {ok, NewState#beampkg_state{tref = TRef}}.
 
 %% @private
-full_path(Path, BaseDir) ->
-    case filename:pathtype(Path) of
-        absolute -> Path;
-        _ -> filename:join([BaseDir, Path])
-    end.
-
-%% @private
-%% @doc Return the application directory for Module. It assumes Module is in
-%%      a standard OTP layout application in the ebin or src directory.
-get_base_dir(Module) ->
-    {file, Here} = code:is_loaded(Module),
-    filename:dirname(filename:dirname(Here)).
-
-%% @private
-get_file_mtime(undefined) -> -1;
-get_file_mtime(FileName) ->
-    case file:read_file_info(FileName) of
-        {ok, FileInfo} ->
-            file:read_file_info(FileName),
-            FileInfo#file_info.mtime;
-        {error,enoent} ->
-            -1
-    end.
-
-%% @private
-get_max_mtime(FileNames) ->
-    lists:max([get_file_mtime(F) || F <- FileNames]).
-
-%% @private
 get_last_package(Wildcard, Module) ->
-    FileInfos = [{get_file_mtime(F), F} || F <- filelib:wildcard(Wildcard)],
+    FileInfos = [{beambag:get_file_mtime(F), F} || F <- filelib:wildcard(Wildcard)],
     case length(FileInfos) of
         N when N > 10 ->
-            error_report([{reason, {"too many packages, please clean up", N, "just a warning, keeping working"}}, {module, Module}]);
+            beambag:error_report([{reason, {"too many packages, please clean up", N, "just a warning, keeping working"}}, {module, Module}]);
         _ -> do_nothing
     end,
     case FileInfos of
@@ -137,7 +108,7 @@ handle_cast(_Req, State) ->
 %% @private
 handle_info(interval, State=#beampkg_state{wildcard=Wildcard, module=Module, mtime=OldMTime}) ->
     {_, PackageFile} = get_last_package(Wildcard, Module),
-    MTime = get_file_mtime(PackageFile),
+    MTime = beambag:get_file_mtime(PackageFile),
     NewState = case MTime =/= -1 andalso MTime > OldMTime of
                    true ->
                        NewState1 = State#beampkg_state{current_package = PackageFile, mtime = MTime},
@@ -161,30 +132,13 @@ code_change(_Vsn, State, _Extra) ->
 
 need_edit(State) ->
     is_package_newer(State) orelse
-	does_the_module_contain_the_magic_marker(State).
+	beambag:does_the_module_contain_the_magic_marker(State#beampkg_state.module,
+                                                         fun() -> need_edit(State) end).
 
 is_package_newer(State) ->
-    PackageFileMTime = get_file_mtime(State#beampkg_state.current_package),
-    TargetMTime = get_file_mtime(State#beampkg_state.target),
+    PackageFileMTime = beambag:get_file_mtime(State#beampkg_state.current_package),
+    TargetMTime = beambag:get_file_mtime(State#beampkg_state.target),
     PackageFileMTime > TargetMTime.
-
-does_the_module_contain_the_magic_marker(State) ->
-    Module = State#beampkg_state.module,
-    %% Sometimes mtime isn't enough. We want to make sure the source
-    %% data is edited into the target beam.
-    case {code:is_loaded(Module), code:get_object_code(Module)} of
-        {false, _} -> false;
-        {{file, Filename}, {Module, Beam, Filename}} ->
-	    %% Check for magic.
-	    beambag_edit:has_magic(Beam, ?MAGIC);
-        {{file, _Filename}, {Module, _Beam, _OtherFilename}} ->
-	    %% Load target beam if not used.
-	    code:purge(Module),
-	    code:load_file(Module),
-	    need_edit(State);
-        {_, error} ->
-	    false
-    end.
 
 edit(State = #beampkg_state{current_package = undefined}) -> State;
 edit(State = #beampkg_state{current_package = PackageFile, module = Module, template = Template}) ->
@@ -192,10 +146,10 @@ edit(State = #beampkg_state{current_package = PackageFile, module = Module, temp
         Package = load_package(PackageFile),
         case {load_data(Module, Package), proplists:get_value(template, Package, Template)} of
             {{error, Reason}, _} ->
-                error_report([{reason, {"can't load data", Reason}}, {package_file, PackageFile}, {module, Module}]),
+                beambag:error_report([{reason, {"can't load data", Reason}}, {package_file, PackageFile}, {module, Module}]),
                 State;
             {{ok, _}, undefined} ->
-                error_report([{reason, "template is missing"}, {package_file, PackageFile}, {module, Module}]),
+                beambag:error_report([{reason, "template is missing"}, {package_file, PackageFile}, {module, Module}]),
                 State;
             {{ok, Data}, NewTemplate} ->
                 BeamData = beambag_edit:swap(NewTemplate, ?MAGIC, term_to_binary(Data)),
@@ -208,7 +162,7 @@ edit(State = #beampkg_state{current_package = PackageFile, module = Module, temp
         end
     catch
         Type:Error ->
-            error_report([{reason, {Type, Error}}, {package_file, PackageFile}, {module, Module}, {stacktrace, erlang:get_stacktrace()}]),
+            beambag:error_report([{reason, {Type, Error}}, {package_file, PackageFile}, {module, Module}, {stacktrace, erlang:get_stacktrace()}]),
             State
 
     end.
@@ -255,8 +209,3 @@ load_data(Module, Package) ->
             end
     end.
 
-editor_name(TargetModule) ->
-    list_to_atom(atom_to_list(TargetModule) ++ "_edit").
-
-error_report(PList) ->
-    error_logger:warning_report(["can't load package, skipping beamedit"] ++ PList).
