@@ -52,6 +52,29 @@ complete_test() ->
     io:format("last_updated: ~p, mtime: ~p~n", [beampkg:last_updated(simple_template), MTime]),
     ?assertMatch(MTime, beampkg:last_updated(simple_template)),
     ?assertMatch(hello_world, simple_template:data()),
+    beampkg:stop(simple_template),
     file:delete(FN),
     file:delete("edited/simple_template.beam"),
     file:delete("edited").
+
+magic_reloader_test() ->
+    code:delete(simple_template),
+    code:purge(simple_template),
+    file:delete("other_simple_template/simple_template.beam"),
+    file:delete("other_simple_template"),
+    ok = file:make_dir("other_simple_template"),
+    {ok, MTs, _} = erl_scan:string("-module(simple_template)."),
+    {ok, ETs, _} = erl_scan:string("-export([data/0])."),
+    {ok, FTs, _} = erl_scan:string("data() -> other_atom."),
+    {ok,MF} = erl_parse:parse_form(MTs),
+    {ok,EF} = erl_parse:parse_form(ETs),
+    {ok,FF} = erl_parse:parse_form(FTs),
+    {ok, simple_template, Bin} = compile:forms([MF,EF,FF]),
+    ok = file:write_file("other_simple_template/simple_template.beam", Bin),
+    true = code:add_patha("other_simple_template"),
+    {module, simple_template} = code:load_file(simple_template),
+    other_atom = simple_template:data(),
+    complete_test(),
+    file:delete("other_simple_template/simple_template.beam"),
+    file:delete("other_simple_template").
+

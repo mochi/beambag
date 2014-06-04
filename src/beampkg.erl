@@ -11,14 +11,12 @@
 
 -behaviour(gen_server).
 
--export([child_spec/3, start_link/3, last_updated/1]).
+-export([child_spec/3, start_link/3, last_updated/1, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 -export([check_md5/1, get_last_package/2, get_file_mtime/1, error_report/1]).
 
 -record(beampkg_state, {wildcard, current_package, mtime, target, template, module, tref}).
--record(error_msg, {reason, package_file = "", module, stacktrace = undefined}).
-
 
 %% External API
 %% @type buildfun() = {raw, (FileName::string()) -> term()} |
@@ -40,6 +38,10 @@ start_link(TargetModule, PackageDir, PackageWildcard) ->
     gen_server:start_link({local, editor_name(TargetModule)},
                           ?MODULE,
                           [TargetModule, PackageDir, PackageWildcard], []).
+
+stop(TargetModule) ->
+    EditorName = editor_name(TargetModule),
+    gen_server:call(EditorName, stop).
 
 %%
 %% @doc Get the date and time when the <code>TargetModule</code> was
@@ -74,14 +76,15 @@ init([TargetModule, PackageDir, PackageWildcard]) ->
 	    State
     end,
 
-    {ok, TRef} = timer:send_after(timer:seconds(5), interval),
+    TRef = erlang:send_after(timer:seconds(5), self(), interval),
     {ok, NewState#beampkg_state{tref = TRef}}.
 
 %% @private
-full_path("/" ++ Rest, _BaseDir) ->
-    "/" ++ Rest;
 full_path(Path, BaseDir) ->
-    BaseDir ++ "/" ++ Path.
+    case filename:pathtype(Path) of
+        absolute -> Path;
+        _ -> filename:join([BaseDir, Path])
+    end.
 
 %% @private
 %% @doc Return the application directory for Module. It assumes Module is in
@@ -110,7 +113,7 @@ get_last_package(Wildcard, Module) ->
     FileInfos = [{get_file_mtime(F), F} || F <- filelib:wildcard(Wildcard)],
     case length(FileInfos) of
         N when N > 10 ->
-            error_report(#error_msg{reason = {"too many packages, please clean up", N, "just a warning, keeping working"}, module = Module});
+            error_report([{reason, {"too many packages, please clean up", N, "just a warning, keeping working"}}, {module, Module}]);
         _ -> do_nothing
     end,
     case FileInfos of
@@ -137,13 +140,12 @@ handle_info(interval, State=#beampkg_state{wildcard=Wildcard, module=Module, mti
     MTime = get_file_mtime(PackageFile),
     NewState = case MTime =/= -1 andalso MTime > OldMTime of
                    true ->
-                       io:format("found new package~n", []),
                        NewState1 = State#beampkg_state{current_package = PackageFile, mtime = MTime},
                        edit(NewState1);
                    false ->
                        State
                end,
-    {ok, TRef} = timer:send_after(timer:seconds(5), interval),
+    TRef = erlang:send_after(timer:seconds(5), self(), interval),
     NewState3 = NewState#beampkg_state{tref = TRef},
     {noreply, NewState3};
 handle_info(_Req, State) ->
@@ -186,43 +188,35 @@ does_the_module_contain_the_magic_marker(State) ->
 
 edit(State = #beampkg_state{current_package = undefined}) -> State;
 edit(State = #beampkg_state{current_package = PackageFile, module = Module, template = Template}) ->
-    case load_package(PackageFile) of
-        {error, Reason} ->
-            error_report(#error_msg{reason = Reason, package_file = PackageFile, module = Module}),
-            State;
-        Package ->
-            try
-                case {load_data(Module, Package), proplists:get_value(template, Package, Template)} of
-                    {{error, Reason}, _} ->
-                        error_report(#error_msg{reason = {"can't load data", Reason}, package_file = PackageFile, module = Module}),
-                        State;
-                    {{ok, _}, undefined} ->
-                        error_report(#error_msg{reason = "template is missing", package_file = PackageFile, module = Module}),
-                        State;
-                    {{ok, Data}, NewTemplate} ->
-                        BeamData = beambag_edit:swap(NewTemplate, ?MAGIC, term_to_binary(Data)),
-                        TmpFile = State#beampkg_state.target ++ ".tmp",
-                        ok = file:write_file(TmpFile, BeamData),
-                        ok = file:rename(TmpFile, State#beampkg_state.target),
-                        c:l(State#beampkg_state.module),
-                        erlang:garbage_collect(),
-                        State#beampkg_state{template = NewTemplate}
-                end
-            catch
-                Type:Error ->
-                    error_report(#error_msg{reason = {Type, Error}, package_file = PackageFile, module = Module, stacktrace = true}),
-                    State
+    try
+        Package = load_package(PackageFile),
+        case {load_data(Module, Package), proplists:get_value(template, Package, Template)} of
+            {{error, Reason}, _} ->
+                error_report([{reason, {"can't load data", Reason}}, {package_file, PackageFile}, {module, Module}]),
+                State;
+            {{ok, _}, undefined} ->
+                error_report([{reason, "template is missing"}, {package_file, PackageFile}, {module, Module}]),
+                State;
+            {{ok, Data}, NewTemplate} ->
+                BeamData = beambag_edit:swap(NewTemplate, ?MAGIC, term_to_binary(Data)),
+                TmpFile = State#beampkg_state.target ++ ".tmp",
+                ok = file:write_file(TmpFile, BeamData),
+                ok = file:rename(TmpFile, State#beampkg_state.target),
+                c:l(State#beampkg_state.module),
+                erlang:garbage_collect(),
+                State#beampkg_state{template = NewTemplate}
+        end
+    catch
+        Type:Error ->
+            error_report([{reason, {Type, Error}}, {package_file, PackageFile}, {module, Module}, {stacktrace, erlang:get_stacktrace()}]),
+            State
 
-            end
     end.
 
 load_package(PackageFile) ->
-    case check_md5(PackageFile) of
-        ok ->
-            {ok, Binary} = file:read_file(PackageFile),
-            binary_to_term(Binary);
-        Reason -> {error, Reason}
-    end.
+    ok = check_md5(PackageFile),
+    {ok, Binary} = file:read_file(PackageFile),
+    binary_to_term(Binary).
 
 check_md5(PackageFile) ->
     MD5Str = lists:filter(fun(S) when length(S) == 32 ->
@@ -264,12 +258,5 @@ load_data(Module, Package) ->
 editor_name(TargetModule) ->
     list_to_atom(atom_to_list(TargetModule) ++ "_edit").
 
-error_report(#error_msg{reason = Reason, package_file = PackageFile, module = Module, stacktrace = WithStacktrace}) ->
-    STaddon = case WithStacktrace of
-                  undefined -> [];
-                  _ -> [{stacktrace, erlang:get_stacktrace()}]
-              end,
-    error_logger:warning_report(["can't load package, skipping beamedit",
-                              {module, Module},
-                              {package_file, PackageFile},
-                              {reason, Reason}] ++ STaddon).
+error_report(PList) ->
+    error_logger:warning_report(["can't load package, skipping beamedit"] ++ PList).
