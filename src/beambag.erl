@@ -80,7 +80,7 @@ init([TargetModule, SF, T, BuildFun]) ->
 	    ok
     end,
 
-    {ok, TRef} = timer:send_after(timer:seconds(5), interval),
+    TRef = erlang:send_after(timer:seconds(5), self(), interval),
     {ok, State#beambag_state{tref = TRef}}.
 
 %% @private
@@ -152,7 +152,7 @@ handle_info(interval, State=#beambag_state{file=File, template=Template,
                    {tb, erlang:get_stacktrace()}]),
                 {timer:minutes(1), State}
         end,
-    {ok, TRef} = timer:send_after(Time, interval),
+    TRef = erlang:send_after(Time, self(), interval),
     NewState = State1#beambag_state{tref = TRef},
     {noreply, NewState};
 handle_info(_Req, State) ->
