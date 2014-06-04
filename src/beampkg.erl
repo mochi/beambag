@@ -14,8 +14,10 @@
 -export([child_spec/3, start_link/3, last_updated/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
+-export([check_md5/1, get_last_package/2, get_file_mtime/1, error_report/1]).
 
 -record(beampkg_state, {wildcard, current_package, mtime, target, template, module, tref}).
+-record(error_msg, {reason, package_file = "", module, stacktrace = undefined}).
 
 
 %% External API
@@ -108,7 +110,7 @@ get_last_package(Wildcard, Module) ->
     FileInfos = [{get_file_mtime(F), F} || F <- filelib:wildcard(Wildcard)],
     case length(FileInfos) of
         N when N > 10 ->
-            error_report({"too many packages, please clean up", N, "just a warning, keeping working"}, "", Module, no_onfail, no_stacktrace);
+            error_report(#error_msg{reason = {"too many packages, please clean up", N, "just a warning, keeping working"}, module = Module});
         _ -> do_nothing
     end,
     case FileInfos of
@@ -135,6 +137,7 @@ handle_info(interval, State=#beampkg_state{wildcard=Wildcard, module=Module, mti
     MTime = get_file_mtime(PackageFile),
     NewState = case MTime =/= -1 andalso MTime > OldMTime of
                    true ->
+                       io:format("found new package~n", []),
                        NewState1 = State#beampkg_state{current_package = PackageFile, mtime = MTime},
                        edit(NewState1);
                    false ->
@@ -185,36 +188,16 @@ edit(State = #beampkg_state{current_package = undefined}) -> State;
 edit(State = #beampkg_state{current_package = PackageFile, module = Module, template = Template}) ->
     case load_package(PackageFile) of
         {error, Reason} ->
-            error_report(Reason, PackageFile, Module, no_onfail, no_stacktrace),
+            error_report(#error_msg{reason = Reason, package_file = PackageFile, module = Module}),
             State;
         Package ->
-            OnFailF = case proplists:get_value(on_fail, Package) of
-                          undefined -> fun(_, _) -> do_nothing end;
-                          OnFailF1 ->
-                              fun(Fl, Rs) ->
-                                      spawn(fun() ->
-                                                    process_flag(priority, low),
-                                                    OnFailF1(Fl, Rs)
-                                            end)
-                              end
-                      end,
-            OnSuccessF = case proplists:get_value(on_success, Package) of
-                             undefined -> fun(_) -> do_nothing end;
-                             OnSuccessF1 ->
-                                 fun(Fl) ->
-                                         spawn(fun() ->
-                                                       process_flag(priority, low),
-                                                       OnSuccessF1(Fl)
-                                               end)
-                                 end
-                         end,
             try
-                case {load_data(Module, Package), load_template(Package, Template)} of
+                case {load_data(Module, Package), proplists:get_value(template, Package, Template)} of
                     {{error, Reason}, _} ->
-                        error_report({"can't load data", Reason}, PackageFile, Module, OnFailF, no_stacktrace),
+                        error_report(#error_msg{reason = {"can't load data", Reason}, package_file = PackageFile, module = Module}),
                         State;
                     {{ok, _}, undefined} ->
-                        error_report("template is missing", PackageFile, Module, OnFailF, no_stacktrace),
+                        error_report(#error_msg{reason = "template is missing", package_file = PackageFile, module = Module}),
                         State;
                     {{ok, Data}, NewTemplate} ->
                         BeamData = beambag_edit:swap(NewTemplate, ?MAGIC, term_to_binary(Data)),
@@ -223,12 +206,11 @@ edit(State = #beampkg_state{current_package = PackageFile, module = Module, temp
                         ok = file:rename(TmpFile, State#beampkg_state.target),
                         c:l(State#beampkg_state.module),
                         erlang:garbage_collect(),
-                        OnSuccessF(PackageFile),
                         State#beampkg_state{template = NewTemplate}
                 end
             catch
                 Type:Error ->
-                    error_report({Type, Error}, PackageFile, Module, OnFailF, with_stacktrace),
+                    error_report(#error_msg{reason = {Type, Error}, package_file = PackageFile, module = Module, stacktrace = true}),
                     State
 
             end
@@ -279,24 +261,15 @@ load_data(Module, Package) ->
             end
     end.
 
-load_template(Package, OldTemplate) ->
-    case proplists:get_value(template, Package) of
-        undefined -> OldTemplate;
-        Defined -> Defined
-    end.
-
 editor_name(TargetModule) ->
     list_to_atom(atom_to_list(TargetModule) ++ "_edit").
 
-error_report(Reason, PackageFile, Module, OnFail, WithStacktrace) ->
-    case OnFail of
-        undefined -> do_nothing;
-        no_onfail -> do_nothing;
-        Defined -> Defined(PackageFile, Reason)
-    end,
-    {STFaddon, STAaddon} = case WithStacktrace of
-                                  with_stacktrace -> {"~p~n", [erlang:get_stacktrace()]};
-                                  _ -> {"", []}
-                              end,
-    error_logger:warning_msg("~s: can't load package ~s: ~p, skipping beamedit~n" ++ STFaddon,
-                             [Module, PackageFile, Reason] ++ STAaddon).
+error_report(#error_msg{reason = Reason, package_file = PackageFile, module = Module, stacktrace = WithStacktrace}) ->
+    STaddon = case WithStacktrace of
+                  undefined -> [];
+                  _ -> [{stacktrace, erlang:get_stacktrace()}]
+              end,
+    error_logger:warning_report(["can't load package, skipping beamedit",
+                              {module, Module},
+                              {package_file, PackageFile},
+                              {reason, Reason}] ++ STaddon).
