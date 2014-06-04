@@ -11,9 +11,12 @@
 
 -behaviour(gen_server).
 
--export([child_spec/4, start_link/4, last_updated/1]).
+-export([child_spec/4, start_link/4, last_updated/1, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
+
+-export([full_path/2, get_base_dir/1, get_file_mtime/1, get_max_mtime/1,
+         does_the_module_contain_the_magic_marker/2, editor_name/1, error_report/1]).
 
 -record(beambag_state, {file, mtime, template, target, module, tref, buildfun}).
 
@@ -38,6 +41,12 @@ start_link(TargetModule, SourceFile, Template, BuildFun) ->
     gen_server:start_link({local, editor_name(TargetModule)},
                           ?MODULE,
                           [TargetModule, SourceFile, Template, BuildFun], []).
+
+%% @doc Stop the <code>beampkg</code> server.
+-spec stop(atom()) -> ok.
+stop(TargetModule) ->
+    EditorName = editor_name(TargetModule),
+    gen_server:call(EditorName, stop).
 
 %%
 %% @doc Get the date and time when the <code>TargetModule</code> was
@@ -71,14 +80,15 @@ init([TargetModule, SF, T, BuildFun]) ->
 	    ok
     end,
 
-    {ok, TRef} = timer:send_after(timer:seconds(5), interval),
+    TRef = erlang:send_after(timer:seconds(5), self(), interval),
     {ok, State#beambag_state{tref = TRef}}.
 
 %% @private
-full_path("/" ++ Rest, _BaseDir) ->
-    "/" ++ Rest;
 full_path(Path, BaseDir) ->
-    BaseDir ++ "/" ++ Path.
+    case filename:pathtype(Path) of
+        absolute -> Path;
+        _ -> filename:join([BaseDir, Path])
+    end.
 
 %% @private
 %% @doc Return the application directory for Module. It assumes Module is in
@@ -88,6 +98,7 @@ get_base_dir(Module) ->
     filename:dirname(filename:dirname(Here)).
 
 %% @private
+get_file_mtime(undefined) -> -1;
 get_file_mtime(FileName) ->
     case file:read_file_info(FileName) of
         {ok, FileInfo} ->
@@ -141,7 +152,7 @@ handle_info(interval, State=#beambag_state{file=File, template=Template,
                    {tb, erlang:get_stacktrace()}]),
                 {timer:minutes(1), State}
         end,
-    {ok, TRef} = timer:send_after(Time, interval),
+    TRef = erlang:send_after(Time, self(), interval),
     NewState = State1#beambag_state{tref = TRef},
     {noreply, NewState};
 handle_info(_Req, State) ->
@@ -157,36 +168,36 @@ code_change(_Vsn, State, _Extra) ->
 
 need_edit(State) ->
     is_template_newer(State) orelse
-	does_the_module_contain_the_magic_marker(State).
+	does_the_module_contain_the_magic_marker(State#beambag_state.module,
+                                                 fun() -> need_edit(State) end).
 
 is_template_newer(State) ->
     TemplateMTime = get_file_mtime(State#beambag_state.template),
     TargetMTime = get_file_mtime(State#beambag_state.target),
     TemplateMTime > TargetMTime.
 
-does_the_module_contain_the_magic_marker(State) ->
-    Module = State#beambag_state.module,
-    {file, Filename} = code:is_loaded(Module),
+does_the_module_contain_the_magic_marker(Module, RecheckF) ->
     %% Sometimes mtime isn't enough. We want to make sure the source
     %% data is edited into the target beam.
-    case code:get_object_code(Module) of
-	{Module, Beam, Filename} ->
-	    %% Check for magic.
-	    beambag_edit:has_magic(Beam, ?MAGIC);
-	{Module, _Beam, _OtherFilename} ->
-	    %% Load target beam if not used.
-	    code:purge(Module),
-	    code:load_file(Module),
-	    need_edit(State);
-	error ->
-	    false
+    case {code:is_loaded(Module), code:get_object_code(Module)} of
+        {false, _} -> false;
+        {{file, Filename}, {Module, Beam, Filename}} ->
+            %% Check for magic.
+            beambag_edit:has_magic(Beam, ?MAGIC);
+        {{file, _Filename}, {Module, _Beam, _OtherFilename}} ->
+            %% Load target beam if not used.
+            code:purge(Module),
+            code:load_file(Module),
+            RecheckF();
+        {_, error} ->
+            false
     end.
 
 edit(State) ->
     Data = getbinarydata(State#beambag_state.file, State#beambag_state.buildfun),
     case Data of
         error ->
-            error_logger:warning_msg("Data is invalid, skipping beamedit.~n"),
+            error_report([]),
             ok;
         _ ->
             {ok, BeamTemplate} = file:read_file(State#beambag_state.template),
@@ -219,3 +230,6 @@ getdata(FileName, BuildFun) ->
 
 editor_name(TargetModule) ->
     list_to_atom(atom_to_list(TargetModule) ++ "_edit").
+
+error_report(PList) ->
+    error_logger:warning_report(["can't load new data, skipping beamedit"] ++ PList).
