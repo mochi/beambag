@@ -28,7 +28,7 @@ check_last_package_test() ->
 complete_test() ->
     [file:delete(F) || F <- filelib:wildcard("propadata.*")],
     file:delete("edited/simple_template.beam"),
-    file:delete("edited"),
+    file:del_dir("edited"),
     {ok, Editor} = beampkg:start_link(simple_template, ".", "propadata.[0-9a-f]*"),
     beampkg:last_updated(simple_template),
     case code:is_loaded(simple_template) of
@@ -61,7 +61,7 @@ magic_reloader_test() ->
     code:delete(simple_template),
     code:purge(simple_template),
     file:delete("other_simple_template/simple_template.beam"),
-    file:delete("other_simple_template"),
+    file:del_dir("other_simple_template"),
     ok = file:make_dir("other_simple_template"),
     {ok, MTs, _} = erl_scan:string("-module(simple_template)."),
     {ok, ETs, _} = erl_scan:string("-export([data/0])."),
