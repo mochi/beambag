@@ -1,7 +1,8 @@
 % anonymous function
-% in: <binary content of source>
+% in: <file name of source>
 % out: <input for code_change function>
-fun(Source) when is_binary(Source) ->
+fun(SourceFN) when is_list(SourceFN) ->
+    {ok, Source} = file:read_file(SourceFN),
     Map = lists:map(fun(Line) ->
                       case binary:split(Line, <<",">>, [global]) of
                           [Key | Value] when Value =/= [] ->

@@ -30,12 +30,11 @@ construct_package(ParsedArgs) ->
               Fun = read_fun_from_file(F),
               [{code_change, Fun} | A];
          ({"template", [F | _]}, A) ->
-              {ok, Binary} = file:read_file(F ++ ".erl"),
+              {ok, Binary} = file:read_file(F),
               Res = [{template, Binary} | A],
               prepare_template(Res);
          ({"source", [F | _]}, A) ->
-              {ok, Binary} = file:read_file(F),
-              Res = [{source, Binary} | A],
+              Res = [{source, F} | A],
               prepare_data(Res);
          ({"parser", [F | _]}, A) ->
               Fun = read_fun_from_file(F),
@@ -53,7 +52,7 @@ md5str(Binary) ->
 
 read_fun_from_file(File) ->
     OFun = try
-        {ok, Binary} = file:read_file(File ++ ".erl"),
+        {ok, Binary} = file:read_file(File),
         {ok,Scanned,_} = erl_scan:string(binary_to_list(Binary)),
         {ok,Parsed} = erl_parse:parse_exprs(Scanned),
         {value, Fun, _} = erl_eval:exprs(Parsed,[]),
@@ -111,13 +110,13 @@ usage() ->
 
 Where keys are
     source          filename of source data
-    parser          filename (without .erl) for parser function converting specified source to plist
-    template        erlang source filename (without .erl) with template
+    parser          filename for parser function converting specified source to plist
+    template        erlang source filename with template
     module          target module name
-    code_change     filename (without .erl) for runtime prepare/update function converting plist to LitT resource [optional]
+    code_change     filename for runtime prepare/update function converting plist to LitT resource [optional]
 
 Example:
-    ./convertor.es source=addon.csv parser=csv template=dict module=target_module code_change=merge_gb_trees
+    ./convertor.es source=addon.csv parser=csv.erl template=dict.erl module=target_module code_change=merge_gb_trees.erl
 ", []),
     do_nothing.
 
@@ -148,7 +147,7 @@ test() ->
     ok = file:write_file("_test_source.csv", TestCSV),
     TestReport = <<"fun(Type, _, Reason, Arg) -> self() ! {Type, Reason, Arg} end.">>,
     ok = file:write_file("_test_report.erl", TestReport),
-    "propadata.tmodule." ++ MD5Str = lists:delete($\n, os:cmd("./converter.es source=_test_source.csv parser=csv template=plisttree code_change=plist_to_gb_trees module=tmodule")),
+    "propadata.tmodule." ++ MD5Str = lists:delete($\n, os:cmd("./converter.es source=_test_source.csv parser=csv.erl template=plisttree.erl code_change=plist_to_gb_trees.erl module=tmodule")),
     ok = check_md5("propadata.tmodule." ++ MD5Str),
     {ok, Binary} = file:read_file("propadata.tmodule." ++ MD5Str), 
     Package = binary_to_term(Binary),

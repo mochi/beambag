@@ -46,13 +46,13 @@ Converter creates package which is compressed ETF of list of following format:
 
 Data is created by calling a parser on a source.
 Source is a file of arbitrary input data.
-Parser is a file (specified without .erl extension) containing an anonymous function accepting binary content of source and returning ArbitraryData.
+Parser is a file containing an anonymous function accepting binary content of source and returning ArbitraryData.
 
 Template is a file containing source with target module code template.
 
 Module is a name of target module.
 
-Code_change is a file (specified without .erl extension) containing an anonymous function accepting target module name (atom) and new data (ArbitraryData).
+Code_change is a file containing an anonymous function accepting target module name (atom) and new data (ArbitraryData).
 Code_change can replace existing data or update it by requesting current state from target module.
 
 It's strictly required to have the same version of erlang runtime working with propadata and beampkg.
@@ -139,7 +139,7 @@ First, you should check that erlang runtime on your auxiliary server and on prod
 Then you can generate a package:
 
 <pre>
-$ cd /auxiliary_beampkg_packages/ && converter.es source=sortings.csv parser=csv template=simple_template module=tmodule code_change=update_dict
+$ cd /auxiliary_beampkg_packages/ && converter.es source=sortings.csv parser=csv.erl template=simple_template.erl module=tmodule code_change=update_dict.erl
 propadata.tmodule.67699e588407ecdc187378d80349c3ac
 </pre>
 
