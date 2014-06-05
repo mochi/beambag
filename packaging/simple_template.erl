@@ -1,4 +1,4 @@
--module(simple_template).
+-module('$$module').
 -export([data/0]).
 
 data() ->
