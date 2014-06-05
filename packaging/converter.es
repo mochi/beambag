@@ -77,15 +77,22 @@ prepare_data(PList) ->
         _ -> PList
     end.
 
+binary_to_beam(Binary) ->
+    try
+        {ok, Ts, _} = erl_scan:string(binary_to_list(Binary)),
+        {FsI, _} = lists:foldl(fun({dot,_} = Dot, {Parts, Remaining}) -> {[lists:reverse([Dot | Remaining]) | Parts], []};
+                                  (Other, {Parts, Remaining}) -> {Parts, [Other | Remaining]} end,
+                               {[], []}, Ts),
+        compile:forms([begin {ok, PFs} = erl_parse:parse_form(F), PFs end || F <- lists:reverse(FsI)]) % {ok, Module, Binary}
+    catch
+        _:Reason -> {error, Reason}
+    end.
+
 prepare_template(PList) ->
     case {proplists:get_value(template, PList), proplists:get_value(module, PList)} of
         {Template, Module} when Template =/= undefined andalso Module =/= undefined ->
             OurTemplate = binary:replace(Template, <<"'$$module'">>, list_to_binary(atom_to_list(Module)), [global]),
-            {ok, Ts, _} = erl_scan:string(binary_to_list(OurTemplate)),
-            {FsI, _} = lists:foldl(fun({dot,_} = Dot, {Parts, Remaining}) -> {[lists:reverse([Dot | Remaining]) | Parts], []};
-                                      (Other, {Parts, Remaining}) -> {Parts, [Other | Remaining]} end,
-                                   {[], []}, Ts),
-            {ok, Module, Binary} = compile:forms([begin {ok, PFs} = erl_parse:parse_form(F), PFs end || F <- lists:reverse(FsI)]),
+            {ok, Module, Binary} = binary_to_beam(OurTemplate),
             [{template, Binary} | proplists:delete(template, PList)];
         _ -> PList
     end.
