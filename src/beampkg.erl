@@ -188,7 +188,8 @@ edit(PackageFile, RunningModuleFile) ->
                 ok = file:rename(TmpFile, RunningModuleFile),
                 c:l(proplists:get_value(module, Package))
         end,
-        erlang:garbage_collect()
+        erlang:garbage_collect(),
+        beambag:info_report([{module, proplists:get_value(module, Package)}, {package_file, PackageFile}])
     catch
         Type:Error ->
             beambag:error_report([{reason, {Type, Error}}, {package_file, PackageFile}, {stacktrace, erlang:get_stacktrace()}])

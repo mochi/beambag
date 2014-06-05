@@ -16,7 +16,7 @@
          terminate/2, code_change/3]).
 
 -export([full_path/2, get_base_dir/1, get_file_mtime/1, get_max_mtime/1,
-         does_the_module_contain_the_magic_marker/2, editor_name/1, error_report/1]).
+         does_the_module_contain_the_magic_marker/2, editor_name/1, error_report/1, info_report/1]).
 
 -record(beambag_state, {file, mtime, template, target, module, tref, buildfun}).
 
@@ -230,6 +230,9 @@ getdata(FileName, BuildFun) ->
 
 editor_name(TargetModule) ->
     list_to_atom(atom_to_list(TargetModule) ++ "_edit").
+
+info_report(PList) ->
+    error_logger:info_report(["beambag: data updated"] ++ PList).
 
 error_report(PList) ->
     error_logger:warning_report(["can't load new data, skipping beamedit"] ++ PList).
