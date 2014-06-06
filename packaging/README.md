@@ -111,7 +111,8 @@ Luckily you already have parser for CSV, so you need not to write your own
 
 <pre>
 $ cat csv.erl
-fun(Source) when is_binary(Source) ->
+fun(SourceFN) when is_list(SourceFN) ->
+    {ok, Source} = file:read_file(SourceFN),
     Map = lists:map(fun(Line) ->
                       case binary:split(Line, <<",">>, [global]) of
                           [Key | Value] when Value =/= [] ->
@@ -140,17 +141,17 @@ Then you can generate a package:
 
 <pre>
 $ cd /auxiliary_beampkg_packages/ && converter.es source=sortings.csv parser=csv.erl template=simple_template.erl module=tmodule code_change=update_dict.erl
-propadata.tmodule.67699e588407ecdc187378d80349c3ac
+beambag_propadata.tmodule.67699e588407ecdc187378d80349c3ac
 </pre>
 
-The propadata.tmodule.67699e588407ecdc187378d80349c3ac file is the package. Hex number in the name is a MD5 checksum for integrity checking.
+The beambag_propadata.tmodule.67699e588407ecdc187378d80349c3ac file is the package. Hex number in the name is a MD5 checksum for integrity checking.
 
 Let's prepare the production side now.
 To simplify example we don't use supervisor.
 First, let's start beampkg:
 
 <pre>
-1> beampkg:start_link("/production_beampkg_packages", "propadata.[a-z0-9_]*.[0-9a-f]*").
+1> beampkg:start_link("/production_beampkg_packages").
 <0.12.0>
 </pre>
 
@@ -160,7 +161,7 @@ The only thing left is to set up syncing of packages from auxiliary server and p
 And also we would like to delete old (from 6th and further) packages as well.
 
 <pre>
-$ ls -t1 /auxiliary_beampkg_packages/propadata.[a-z0-9_]*.[0-9a-f]* | tail -n +6 | xargs rm -f
+$ ls -t1 /auxiliary_beampkg_packages/beambag_propadata.[a-z0-9_]*.[0-9a-f]* | tail -n +6 | xargs rm -f
 $ rsync -av --delete /auxiliary_beampkg_packages/ production:/production_beampkg_packages/
 </pre>
 

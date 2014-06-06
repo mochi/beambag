@@ -50,7 +50,7 @@ last_updated(EditorName, TargetModule) ->
 init([PackageDir]) ->
     BaseDir = beambag:get_base_dir(?MODULE),
     PackageFullDir = beambag:full_path(PackageDir, BaseDir),
-    PackageFullWildcard = filename:join([PackageFullDir, "propadata.[a-z0-9_]*.[0-9a-f]*"]),
+    PackageFullWildcard = filename:join([PackageFullDir, "beambag_propadata.[a-z0-9_]*.[0-9a-f]*"]),
     EditedBeamsDir = filename:join([BaseDir, "edited"]),
     ok = filelib:ensure_dir(EditedBeamsDir ++ "/"),
     true = code:add_patha(EditedBeamsDir),
@@ -156,7 +156,7 @@ get_updated_packages(Old, New) ->
               end, [], New).
 
 parse_package_file_name(PackageFile) ->
-    ["propadata", ModuleNameString, PackageMD5] = string:tokens(filename:basename(PackageFile), "."),
+    ["beambag_propadata", ModuleNameString, PackageMD5] = string:tokens(filename:basename(PackageFile), "."),
     {ModuleNameString, PackageMD5}.
 
 module_name_from_beam(BeamFile) ->

@@ -13,7 +13,7 @@ main(Args) ->
     ModuleName = atom_to_list(proplists:get_value(module, UpdatePackage)),
     Binary = term_to_binary(UpdatePackage, [compressed]),
     MD5Str = md5str(Binary),
-    FN = "propadata." ++ ModuleName ++ "." ++ MD5Str,
+    FN = "beambag_propadata." ++ ModuleName ++ "." ++ MD5Str,
     case file:write_file(FN, Binary) of
         ok -> io:format(FN ++ "~n", []);
         {error, Reason} -> exit(Reason)
@@ -98,7 +98,7 @@ prepare_template(PList) ->
 
 validate_data(PList) ->
     ReqFds = [proplists:is_defined(RequiredFields, PList) || RequiredFields <- [data, template, module]],
-    case lists:member(undefined, ReqFds) of
+    case lists:member(false, ReqFds) of
         true -> exit("data, template and module are required");
         _ -> do_nothing
     end.
@@ -147,9 +147,9 @@ test() ->
     ok = file:write_file("_test_source.csv", TestCSV),
     TestReport = <<"fun(Type, _, Reason, Arg) -> self() ! {Type, Reason, Arg} end.">>,
     ok = file:write_file("_test_report.erl", TestReport),
-    "propadata.tmodule." ++ MD5Str = lists:delete($\n, os:cmd("./converter.es source=_test_source.csv parser=csv.erl template=plisttree.erl code_change=plist_to_gb_trees.erl module=tmodule")),
-    ok = check_md5("propadata.tmodule." ++ MD5Str),
-    {ok, Binary} = file:read_file("propadata.tmodule." ++ MD5Str), 
+    "beambag_propadata.tmodule." ++ MD5Str = lists:delete($\n, os:cmd("./converter.es source=_test_source.csv parser=csv.erl template=plisttree.erl code_change=plist_to_gb_trees.erl module=tmodule")),
+    ok = check_md5("beambag_propadata.tmodule." ++ MD5Str),
+    {ok, Binary} = file:read_file("beambag_propadata.tmodule." ++ MD5Str), 
     Package = binary_to_term(Binary),
     [_One, _Two, _Three] = proplists:get_value(data, Package),
     GBTree = (proplists:get_value(code_change, Package))(simple_template, proplists:get_value(data, Package)),
@@ -157,5 +157,5 @@ test() ->
     <<_:8/binary, _/binary>> = proplists:get_value(template, Package),
     file:delete("_test_source.csv"),
     file:delete("_test_report.erl"),
-    file:delete("propadata.tmodule." ++ MD5Str),
+    file:delete("beambag_propadata.tmodule." ++ MD5Str),
     io:format("looks good~n", []).

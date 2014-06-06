@@ -12,25 +12,25 @@ check_md5_test() ->
     crypto:start(),
     RBinary = crypto:rand_bytes(200),
     crypto:hash(md5, RBinary),
-    FN = "propadata._module." ++ md5str(RBinary),
+    FN = "beambag_propadata._module." ++ md5str(RBinary),
     ok = file:write_file(FN, RBinary),
     ?assertMatch(ok, beampkg:check_md5(FN)),
     file:delete(FN).
 
 check_last_package_test() ->
-    ok = file:write_file("propadata.f1.abc", <<>>),
+    ok = file:write_file("beambag_propadata.f1.abc", <<>>),
     timer:sleep(1000),
-    ok = file:write_file("propadata.f1.abc2", <<>>),
-    ok = file:write_file("propadata.f2.abc3", <<>>),
-    LastPackages = beampkg:get_last_packages("./propadata.[a-z0-9_]*.[0-9a-f]*"),
-    ?assertMatch("./propadata.f1.abc2", element(2, element(2, dict:find("f1", LastPackages)))),
-    ?assertMatch("./propadata.f2.abc3", element(2, element(2, dict:find("f2", LastPackages)))),
-    file:delete("propadata.f1.abc"),
-    file:delete("propadata.f1.abc2"),
-    file:delete("propadata.f2.abc3").
+    ok = file:write_file("beambag_propadata.f1.abc2", <<>>),
+    ok = file:write_file("beambag_propadata.f2.abc3", <<>>),
+    LastPackages = beampkg:get_last_packages("./beambag_propadata.[a-z0-9_]*.[0-9a-f]*"),
+    ?assertMatch("./beambag_propadata.f1.abc2", element(2, element(2, dict:find("f1", LastPackages)))),
+    ?assertMatch("./beambag_propadata.f2.abc3", element(2, element(2, dict:find("f2", LastPackages)))),
+    file:delete("beambag_propadata.f1.abc"),
+    file:delete("beambag_propadata.f1.abc2"),
+    file:delete("beambag_propadata.f2.abc3").
 
 complete_test() ->
-    [file:delete(F) || F <- filelib:wildcard("propadata.*")],
+    [file:delete(F) || F <- filelib:wildcard("beambag_propadata.*")],
     file:delete("edited/tmodule.beam"),
     file:del_dir("edited"),
     {ok, Editor} = beampkg:start_link(editor, "."),
@@ -48,7 +48,7 @@ complete_test() ->
     {ok, tmodule, Bin} = compile:forms([MF,EF,FF]),
     Package = [{data, hello_world}, {template, Bin}, {code_change, fun(_, NewData) -> NewData end}, {module, tmodule}],
     PackageBin = term_to_binary(Package, [compressed]),
-    FN = "propadata.tmodule." ++ md5str(PackageBin),
+    FN = "beambag_propadata.tmodule." ++ md5str(PackageBin),
     ok = file:write_file(FN ++ ".temp", PackageBin),
     ok = file:rename(FN ++ ".temp", FN),
     MTime = beambag:get_file_mtime(FN),
@@ -62,7 +62,7 @@ complete_test() ->
     file:del_dir("edited").
 
 refresh_test() ->
-    [file:delete(F) || F <- filelib:wildcard("propadata.*")],
+    [file:delete(F) || F <- filelib:wildcard("beambag_propadata.*")],
     file:delete("edited/tmodule.beam"),
     file:del_dir("edited"),
     {ok, Editor} = beampkg:start_link(editor, "."),
@@ -81,7 +81,7 @@ refresh_test() ->
 
     Package = [{data, hello_world}, {template, Bin}, {code_change, fun(_, NewData) -> NewData end}, {module, tmodule}],
     PackageBin = term_to_binary(Package, [compressed]),
-    FN = "propadata.tmodule." ++ md5str(PackageBin),
+    FN = "beambag_propadata.tmodule." ++ md5str(PackageBin),
     ok = file:write_file(FN ++ ".temp", PackageBin),
     ok = file:rename(FN ++ ".temp", FN),
     MTime = beambag:get_file_mtime(FN),
@@ -93,7 +93,7 @@ refresh_test() ->
 
     NewPackage = [{data, hello_world_2}, {template, Bin}, {code_change, fun(_, NewData) -> NewData end}, {module, tmodule}],
     NewPackageBin = term_to_binary(NewPackage, [compressed]),
-    NewFN = "propadata.tmodule." ++ md5str(NewPackageBin),
+    NewFN = "beambag_propadata.tmodule." ++ md5str(NewPackageBin),
     ok = file:write_file(NewFN ++ ".temp", NewPackageBin),
     ok = file:rename(NewFN ++ ".temp", NewFN),
     NewMTime = beambag:get_file_mtime(NewFN),
@@ -109,7 +109,7 @@ refresh_test() ->
     file:del_dir("edited").
 
 load_second_test() ->
-    [file:delete(F) || F <- filelib:wildcard("propadata.*")],
+    [file:delete(F) || F <- filelib:wildcard("beambag_propadata.*")],
     file:delete("edited/tmodule.beam"),
     file:delete("edited/tmodule2.beam"),
     file:del_dir("edited"),
@@ -133,7 +133,7 @@ load_second_test() ->
     {ok, tmodule, Bin} = compile:forms([MF,EF,FF]),
     Package = [{data, hello_world}, {template, Bin}, {code_change, fun(_, NewData) -> NewData end}, {module, tmodule}],
     PackageBin = term_to_binary(Package, [compressed]),
-    FN = "propadata.tmodule." ++ md5str(PackageBin),
+    FN = "beambag_propadata.tmodule." ++ md5str(PackageBin),
     ok = file:write_file(FN ++ ".temp", PackageBin),
     ok = file:rename(FN ++ ".temp", FN),
     MTime = beambag:get_file_mtime(FN),
@@ -152,7 +152,7 @@ load_second_test() ->
     {ok, tmodule2, Bin2} = compile:forms([MF2,EF2,FF2]),
     NewPackage = [{data, hello_world_2}, {template, Bin2}, {code_change, fun(_, NewData) -> NewData end}, {module, tmodule2}],
     NewPackageBin = term_to_binary(NewPackage, [compressed]),
-    NewFN = "propadata.tmodule2." ++ md5str(NewPackageBin),
+    NewFN = "beambag_propadata.tmodule2." ++ md5str(NewPackageBin),
     ok = file:write_file(NewFN ++ ".temp", NewPackageBin),
     ok = file:rename(NewFN ++ ".temp", NewFN),
     NewMTime = beambag:get_file_mtime(NewFN),
