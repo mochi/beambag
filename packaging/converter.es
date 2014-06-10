@@ -10,9 +10,10 @@ main(Args) ->
     ParsedArgs = parse_args(Args),
     UpdatePackage = construct_package(ParsedArgs),
     validate_data(UpdatePackage),
+    ModuleName = atom_to_list(proplists:get_value(module, UpdatePackage)),
     Binary = term_to_binary(UpdatePackage, [compressed]),
     MD5Str = md5str(Binary),
-    FN = "propadata." ++ MD5Str,
+    FN = "beambag_propadata." ++ ModuleName ++ "." ++ MD5Str,
     case file:write_file(FN, Binary) of
         ok -> io:format(FN ++ "~n", []);
         {error, Reason} -> exit(Reason)
@@ -30,15 +31,18 @@ construct_package(ParsedArgs) ->
               [{code_change, Fun} | A];
          ({"template", [F | _]}, A) ->
               {ok, Binary} = file:read_file(F),
-              [{template, Binary} | A];
+              Res = [{template, Binary} | A],
+              prepare_template(Res);
          ({"source", [F | _]}, A) ->
-              {ok, Binary} = file:read_file(F),
-              Res = [{source, Binary} | A],
+              Res = [{source, F} | A],
               prepare_data(Res);
          ({"parser", [F | _]}, A) ->
               Fun = read_fun_from_file(F),
               Res = [{parser, Fun} | A],
               prepare_data(Res);
+         ({"module", [M | _]}, A) ->
+              Res = [{module, list_to_atom(M)} | A],
+              prepare_template(Res);
          (_, A) -> A end,
       [], ParsedArgs).
 
@@ -48,7 +52,7 @@ md5str(Binary) ->
 
 read_fun_from_file(File) ->
     OFun = try
-        {ok, Binary} = file:read_file(File ++ ".erl"),
+        {ok, Binary} = file:read_file(File),
         {ok,Scanned,_} = erl_scan:string(binary_to_list(Binary)),
         {ok,Parsed} = erl_parse:parse_exprs(Scanned),
         {value, Fun, _} = erl_eval:exprs(Parsed,[]),
@@ -72,10 +76,31 @@ prepare_data(PList) ->
         _ -> PList
     end.
 
+binary_to_beam(Binary) ->
+    try
+        {ok, Ts, _} = erl_scan:string(binary_to_list(Binary)),
+        {FsI, _} = lists:foldl(fun({dot,_} = Dot, {Parts, Remaining}) -> {[lists:reverse([Dot | Remaining]) | Parts], []};
+                                  (Other, {Parts, Remaining}) -> {Parts, [Other | Remaining]} end,
+                               {[], []}, Ts),
+        compile:forms([begin {ok, PFs} = erl_parse:parse_form(F), PFs end || F <- lists:reverse(FsI)]) % {ok, Module, Binary}
+    catch
+        _:Reason -> {error, Reason}
+    end.
+
+prepare_template(PList) ->
+    case {proplists:get_value(template, PList), proplists:get_value(module, PList)} of
+        {Template, Module} when Template =/= undefined andalso Module =/= undefined ->
+            OurTemplate = binary:replace(Template, <<"'$$module'">>, list_to_binary(atom_to_list(Module)), [global]),
+            {ok, Module, Binary} = binary_to_beam(OurTemplate),
+            [{template, Binary} | proplists:delete(template, PList)];
+        _ -> PList
+    end.
+
 validate_data(PList) ->
-    case proplists:is_defined(data, PList) of
-        false -> exit("no data block in update package");
-        true -> do_nothing
+    ReqFds = [proplists:is_defined(RequiredFields, PList) || RequiredFields <- [data, template, module]],
+    case lists:member(false, ReqFds) of
+        true -> exit("data, template and module are required");
+        _ -> do_nothing
     end.
 
 usage() ->
@@ -85,12 +110,13 @@ usage() ->
 
 Where keys are
     source          filename of source data
-    parser          filename (without .erl) for parser function converting specified source to plist
-    template        erlang beam filename with template
-    code_change     filename (without .erl) for runtime prepare/update function converting plist to LitT resource [optional]
+    parser          filename for parser function converting specified source to plist
+    template        erlang source filename with template
+    module          target module name
+    code_change     filename for runtime prepare/update function converting plist to LitT resource [optional]
 
 Example:
-    ./convertor.es source=addon.csv parser=csv template=dict.beam code_change=merge_gb_trees
+    ./convertor.es source=addon.csv parser=csv.erl template=dict.erl module=target_module code_change=merge_gb_trees.erl
 ", []),
     do_nothing.
 
@@ -121,15 +147,15 @@ test() ->
     ok = file:write_file("_test_source.csv", TestCSV),
     TestReport = <<"fun(Type, _, Reason, Arg) -> self() ! {Type, Reason, Arg} end.">>,
     ok = file:write_file("_test_report.erl", TestReport),
-    "propadata." ++ MD5Str = lists:delete($\n, os:cmd("./converter.es source=_test_source.csv parser=csv template=_test_source.csv code_change=plist_to_gb_trees")),
-    ok = check_md5("propadata." ++ MD5Str),
-    {ok, Binary} = file:read_file("propadata." ++ MD5Str), 
+    "beambag_propadata.tmodule." ++ MD5Str = lists:delete($\n, os:cmd("./converter.es source=_test_source.csv parser=csv.erl template=plisttree.erl code_change=plist_to_gb_trees.erl module=tmodule")),
+    ok = check_md5("beambag_propadata.tmodule." ++ MD5Str),
+    {ok, Binary} = file:read_file("beambag_propadata.tmodule." ++ MD5Str), 
     Package = binary_to_term(Binary),
     [_One, _Two, _Three] = proplists:get_value(data, Package),
     GBTree = (proplists:get_value(code_change, Package))(simple_template, proplists:get_value(data, Package)),
     {<<"nlogn">>, <<"nlogn">>, <<"nlogn">>, <<"1">>, <<"stable">>} = gb_trees:get(<<"heapsort">>, GBTree),
-    <<"mergesort,", _/binary>> = proplists:get_value(template, Package),
+    <<_:8/binary, _/binary>> = proplists:get_value(template, Package),
     file:delete("_test_source.csv"),
     file:delete("_test_report.erl"),
-    file:delete("propadata." ++ MD5Str),
+    file:delete("beambag_propadata.tmodule." ++ MD5Str),
     io:format("looks good~n", []).

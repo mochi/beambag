@@ -39,17 +39,20 @@ Converter creates package which is compressed ETF of list of following format:
 [
     {data, ArbitraryData},
     {template, BeamBinary},
+    {module, ModuleAtom},
     {code_change, FunctionOf2Args} % optional
 ]
 </pre>
 
 Data is created by calling a parser on a source.
 Source is a file of arbitrary input data.
-Parser is a file (specified without .erl extension) containing an anonymous function accepting binary content of source and returning ArbitraryData.
+Parser is a file containing an anonymous function accepting binary content of source and returning ArbitraryData.
 
-Template is a file containing beam with target module.
+Template is a file containing source with target module code template.
 
-Code_change is a file (specified without .erl extension) containing an anonymous function accepting target module name (atom) and new data (ArbitraryData).
+Module is a name of target module.
+
+Code_change is a file containing an anonymous function accepting target module name (atom) and new data (ArbitraryData).
 Code_change can replace existing data or update it by requesting current state from target module.
 
 It's strictly required to have the same version of erlang runtime working with propadata and beampkg.
@@ -86,13 +89,13 @@ It could be very simple:
 
 <pre>
 $ cat simple_template.erl
--module(simple_template).
+-module('$$module').
 -export([data/0]).
 
 data() -> {'$$magic'}.
-$ erlc simple_template.erl
 </pre>
 
+Atom '$$module' is replaced by the name of target module.
 Tuple of an atom with name '$$magic' is a special stub which will be replaced by actual data.
 
 Second, you need a source data in CSV
@@ -108,7 +111,8 @@ Luckily you already have parser for CSV, so you need not to write your own
 
 <pre>
 $ cat csv.erl
-fun(Source) when is_binary(Source) ->
+fun(SourceFN) when is_list(SourceFN) ->
+    {ok, Source} = file:read_file(SourceFN),
     Map = lists:map(fun(Line) ->
                       case binary:split(Line, <<",">>, [global]) of
                           [Key | Value] when Value =/= [] ->
@@ -136,18 +140,18 @@ First, you should check that erlang runtime on your auxiliary server and on prod
 Then you can generate a package:
 
 <pre>
-$ cd /auxiliary_beampkg_packages/ && converter.es source=sortings.csv parser=csv template=simple_template.beam code_change=update_dict
-propadata.67699e588407ecdc187378d80349c3ac
+$ cd /auxiliary_beampkg_packages/ && converter.es source=sortings.csv parser=csv.erl template=simple_template.erl module=tmodule code_change=update_dict.erl
+beambag_propadata.tmodule.67699e588407ecdc187378d80349c3ac
 </pre>
 
-The propadata.67699e588407ecdc187378d80349c3ac file is the package. Hex number in the name is a MD5 checksum for integrity checking.
+The beambag_propadata.tmodule.67699e588407ecdc187378d80349c3ac file is the package. Hex number in the name is a MD5 checksum for integrity checking.
 
 Let's prepare the production side now.
 To simplify example we don't use supervisor.
 First, let's start beampkg:
 
 <pre>
-1> beampkg:start_link(simple_template, "/production_beampkg_packages", "propadata.[0-9a-f]*").
+1> beampkg:start_link("/production_beampkg_packages").
 <0.12.0>
 </pre>
 
@@ -157,7 +161,7 @@ The only thing left is to set up syncing of packages from auxiliary server and p
 And also we would like to delete old (from 6th and further) packages as well.
 
 <pre>
-$ ls -t1 /auxiliary_beampkg_packages/propadata.[0-9a-f]* | tail -n +6 | xargs rm -f
+$ ls -t1 /auxiliary_beampkg_packages/beambag_propadata.[a-z0-9_]*.[0-9a-f]* | tail -n +6 | xargs rm -f
 $ rsync -av --delete /auxiliary_beampkg_packages/ production:/production_beampkg_packages/
 </pre>
 
