@@ -72,7 +72,7 @@ init([PackageDir]) ->
                         true -> Modules1;
                         false ->
                             dict:store(RunningModule,
-                                       {beambag:get_file_mtime(RunningModuleFile), undefined, RunningModuleFile}, Modules1)
+                                       {beambag:get_file_mtime(RunningModuleFile), undefined}, Modules1)
                     end
                 end, Packages, filelib:wildcard(filename:join([EditedBeamsDir, "*.beam"]))),
     TRef = erlang:send_after(timer:seconds(5), self(), interval),
