@@ -67,6 +67,7 @@ init([PackageDir]) ->
              end, LastPackages),
     Modules = lists:foldl(fun(RunningModuleFile, Modules1) ->
                     RunningModule = module_name_from_beam(RunningModuleFile),
+                    code:ensure_loaded(list_to_atom(RunningModule)),
                     case dict:is_key(RunningModule, Modules1) of
                         true -> Modules1;
                         false ->
