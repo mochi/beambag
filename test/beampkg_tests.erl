@@ -29,23 +29,29 @@ check_last_package_test() ->
     file:delete("beambag_propadata.f1.abc2"),
     file:delete("beambag_propadata.f2.abc3").
 
+binary_to_beam(Binary) ->
+    {ok, Ts, _} = erl_scan:string(binary_to_list(Binary)),
+    {FsI, _} = lists:foldl(fun({dot,_} = Dot,
+                               {Parts, Remaining}) ->
+                                   {[lists:reverse([Dot | Remaining]) | Parts], []};
+                              (Other, {Parts, Remaining}) ->
+                                   {Parts, [Other | Remaining]}
+                           end, {[], []}, Ts),
+    compile:forms([begin {ok, PFs} = erl_parse:parse_form(F), PFs end
+                   || F <- lists:reverse(FsI)]). % {ok, Module, Binary}
+
+unload_module(M) ->
+    code:delete(M),
+    code:purge(M).
+
 complete_test() ->
     [file:delete(F) || F <- filelib:wildcard("beambag_propadata.*")],
     file:delete("edited/tmodule.beam"),
     file:del_dir("edited"),
     {ok, Editor} = beampkg:start_link(editor, "."),
     beampkg:last_updated(editor, tmodule),
-    case code:is_loaded(tmodule) of
-        {file, _} -> code:delete(tmodule), code:purge(tmodule);
-        _ -> do_nothing
-    end,
-    {ok, MTs, _} = erl_scan:string("-module(tmodule)."),
-    {ok, ETs, _} = erl_scan:string("-export([data/0])."),
-    {ok, FTs, _} = erl_scan:string("data() -> {'$$magic'}."),
-    {ok,MF} = erl_parse:parse_form(MTs),
-    {ok,EF} = erl_parse:parse_form(ETs),
-    {ok,FF} = erl_parse:parse_form(FTs),
-    {ok, tmodule, Bin} = compile:forms([MF,EF,FF]),
+    unload_module(tmodule),
+    {ok, tmodule, Bin} = binary_to_beam(<<"-module(tmodule).\n-export([data/0]).\ndata() -> {'$$magic'}.\n">>),
     Package = [{data, hello_world}, {template, Bin}, {code_change, fun(_, NewData) -> NewData end}, {module, tmodule}],
     PackageBin = term_to_binary(Package, [compressed]),
     FN = "beambag_propadata.tmodule." ++ md5str(PackageBin),
@@ -67,17 +73,8 @@ refresh_test() ->
     file:del_dir("edited"),
     {ok, Editor} = beampkg:start_link(editor, "."),
     beampkg:last_updated(editor, tmodule),
-    case code:is_loaded(tmodule) of
-        {file, _} -> code:delete(tmodule), code:purge(tmodule);
-        _ -> do_nothing
-    end,
-    {ok, MTs, _} = erl_scan:string("-module(tmodule)."),
-    {ok, ETs, _} = erl_scan:string("-export([data/0])."),
-    {ok, FTs, _} = erl_scan:string("data() -> {'$$magic'}."),
-    {ok,MF} = erl_parse:parse_form(MTs),
-    {ok,EF} = erl_parse:parse_form(ETs),
-    {ok,FF} = erl_parse:parse_form(FTs),
-    {ok, tmodule, Bin} = compile:forms([MF,EF,FF]),
+    unload_module(tmodule),
+    {ok, tmodule, Bin} = binary_to_beam(<<"-module(tmodule).\n-export([data/0]).\ndata() -> {'$$magic'}.\n">>),
 
     Package = [{data, hello_world}, {template, Bin}, {code_change, fun(_, NewData) -> NewData end}, {module, tmodule}],
     PackageBin = term_to_binary(Package, [compressed]),
@@ -115,22 +112,10 @@ load_second_test() ->
     file:del_dir("edited"),
     {ok, Editor} = beampkg:start_link(editor, "."),
     beampkg:last_updated(editor, tmodule),
-    case code:is_loaded(tmodule) of
-        {file, _} -> code:delete(tmodule), code:purge(tmodule);
-        _ -> do_nothing
-    end,
-    case code:is_loaded(tmodule2) of
-        {file, _} -> code:delete(tmodule2), code:purge(tmodule2);
-        _ -> do_nothing
-    end,
+    unload_module(tmodule),
+    unload_module(tmodule2),
 
-    {ok, MTs, _} = erl_scan:string("-module(tmodule)."),
-    {ok, ETs, _} = erl_scan:string("-export([data/0])."),
-    {ok, FTs, _} = erl_scan:string("data() -> {'$$magic'}."),
-    {ok,MF} = erl_parse:parse_form(MTs),
-    {ok,EF} = erl_parse:parse_form(ETs),
-    {ok,FF} = erl_parse:parse_form(FTs),
-    {ok, tmodule, Bin} = compile:forms([MF,EF,FF]),
+    {ok, tmodule, Bin} = binary_to_beam(<<"-module(tmodule).\n-export([data/0]).\ndata() -> {'$$magic'}.\n">>),
     Package = [{data, hello_world}, {template, Bin}, {code_change, fun(_, NewData) -> NewData end}, {module, tmodule}],
     PackageBin = term_to_binary(Package, [compressed]),
     FN = "beambag_propadata.tmodule." ++ md5str(PackageBin),
@@ -143,13 +128,7 @@ load_second_test() ->
 
     timer:sleep(1000),
 
-    {ok, MTs2, _} = erl_scan:string("-module(tmodule2)."),
-    {ok, ETs2, _} = erl_scan:string("-export([data/0])."),
-    {ok, FTs2, _} = erl_scan:string("data() -> {'$$magic'}."),
-    {ok,MF2} = erl_parse:parse_form(MTs2),
-    {ok,EF2} = erl_parse:parse_form(ETs2),
-    {ok,FF2} = erl_parse:parse_form(FTs2),
-    {ok, tmodule2, Bin2} = compile:forms([MF2,EF2,FF2]),
+    {ok, tmodule2, Bin2} = binary_to_beam(<<"-module(tmodule2).\n-export([data/0]).\ndata() -> {'$$magic'}.\n">>),
     NewPackage = [{data, hello_world_2}, {template, Bin2}, {code_change, fun(_, NewData) -> NewData end}, {module, tmodule2}],
     NewPackageBin = term_to_binary(NewPackage, [compressed]),
     NewFN = "beambag_propadata.tmodule2." ++ md5str(NewPackageBin),
@@ -171,18 +150,11 @@ load_second_test() ->
     file:del_dir("edited").
 
 magic_reloader_test() ->
-    code:delete(tmodule),
-    code:purge(tmodule),
+    unload_module(tmodule),
     file:delete("other_simple_template/tmodule.beam"),
     file:del_dir("other_simple_template"),
     ok = file:make_dir("other_simple_template"),
-    {ok, MTs, _} = erl_scan:string("-module(tmodule)."),
-    {ok, ETs, _} = erl_scan:string("-export([data/0])."),
-    {ok, FTs, _} = erl_scan:string("data() -> other_atom."),
-    {ok,MF} = erl_parse:parse_form(MTs),
-    {ok,EF} = erl_parse:parse_form(ETs),
-    {ok,FF} = erl_parse:parse_form(FTs),
-    {ok, tmodule, Bin} = compile:forms([MF,EF,FF]),
+    {ok, tmodule, Bin} = binary_to_beam(<<"-module(tmodule).\n-export([data/0]).\ndata() -> other_atom.\n">>),
     ok = file:write_file("other_simple_template/tmodule.beam", Bin),
     true = code:add_patha("other_simple_template"),
     {module, tmodule} = code:load_file(tmodule),
@@ -191,3 +163,48 @@ magic_reloader_test() ->
     file:delete("other_simple_template/tmodule.beam"),
     file:del_dir("other_simple_template").
 
+restore_and_dict_test() ->
+    [file:delete(F) || F <- filelib:wildcard("beambag_propadata.*")],
+    file:delete("edited/tmodule.beam"),
+    file:del_dir("edited"),
+    {ok, Editor} = beampkg:start_link(editor, "."),
+    beampkg:last_updated(editor, tmodule),
+    unload_module(tmodule),
+    {ok, tmodule, Bin} = binary_to_beam(<<"-module(tmodule).\n-export([data/0]).\ndata() -> {'$$magic'}.\n">>),
+
+    Package = [{data, hello_world}, {template, Bin}, {code_change, fun(_, NewData) -> NewData end}, {module, tmodule}],
+    PackageBin = term_to_binary(Package, [compressed]),
+    FN = "beambag_propadata.tmodule." ++ md5str(PackageBin),
+    ok = file:write_file(FN ++ ".temp", PackageBin),
+    ok = file:rename(FN ++ ".temp", FN),
+    MTime = beambag:get_file_mtime(FN),
+    Editor ! interval,
+    ?assertMatch(MTime, beampkg:last_updated(editor, tmodule)),
+    ?assertMatch(hello_world, tmodule:data()),
+    beampkg:stop(editor),
+    file:delete(FN),
+    timer:sleep(1000),
+    ?assertMatch(undefined, whereis(editor)),
+
+    NewPackage = [{data, hello_world_2}, {template, Bin}, {code_change, fun(_, NewData) -> NewData end}, {module, tmodule}],
+    NewPackageBin = term_to_binary(NewPackage, [compressed]),
+    NewFN = "beambag_propadata.tmodule." ++ md5str(NewPackageBin),
+
+    {ok, Editor2} = beampkg:start_link(editor, "."),
+    beampkg:last_updated(editor, tmodule),
+    ?assertMatch(MTime, beampkg:last_updated(editor, tmodule)),
+    ?assertMatch(hello_world, tmodule:data()),
+
+    ok = file:write_file(NewFN ++ ".temp", NewPackageBin),
+    ok = file:rename(NewFN ++ ".temp", NewFN),
+    Editor2 ! interval,
+    NewMTime = beambag:get_file_mtime(NewFN),
+
+    ?assertNot(NewMTime == MTime),
+    ?assertMatch(NewMTime, beampkg:last_updated(editor, tmodule)),
+    ?assertMatch(hello_world_2, tmodule:data()),
+
+    beampkg:stop(editor),
+    file:delete(NewFN),
+    file:delete("edited/tmodule.beam"),
+    file:del_dir("edited").
